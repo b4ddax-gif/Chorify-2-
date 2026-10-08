@@ -8,45 +8,114 @@ on:
 
 jobs:
   build:
+    name: Build CHORIFY 2
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
+
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Set up JDK 21
+      - name: Setup JDK 21
         uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '21'
 
-      - name: Install Gradle
+      - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Check project
+      - name: Locate Android Project
+        shell: bash
         run: |
-          echo "Files:"
-          find . -maxdepth 3 -type f | sort
+          echo "Searching for Android Gradle project..."
 
-      - name: Build APK
-        run: |
-          if [ -f "build.gradle" ] || [ -f "build.gradle.kts" ]; then
-            gradle assembleDebug --stacktrace
-          elif [ -f "app/build.gradle" ] || [ -f "app/build.gradle.kts" ]; then
-            gradle -p . assembleDebug --stacktrace
-          else
-            echo "ERROR: Android Gradle project not found."
-            echo "build.gradle/build.gradle.kts is missing."
+          echo ""
+          echo "Repository structure:"
+          find . -maxdepth 5 -type f | sort | head -300
+
+          echo ""
+          echo "Searching for settings.gradle files..."
+
+          SETTINGS_FILE=$(find . -type f \( \
+            -name "settings.gradle" -o \
+            -name "settings.gradle.kts" \
+          \) | head -n 1)
+
+          if [ -z "$SETTINGS_FILE" ]; then
+            echo ""
+            echo "ERROR: settings.gradle or settings.gradle.kts was not found."
+            echo ""
+            echo "This repository does not contain a complete Android Gradle project."
             exit 1
           fi
 
-      - name: Find APK
-        run: |
-          find . -type f -name "*.apk" -print
+          PROJECT_DIR=$(dirname "$SETTINGS_FILE")
 
-      - name: Upload APK
+          echo ""
+          echo "Android project found:"
+          echo "$PROJECT_DIR"
+
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+
+      - name: Check Gradle Project
+        shell: bash
+        run: |
+          cd "$PROJECT_DIR"
+
+          echo "Project directory:"
+          pwd
+
+          echo ""
+          echo "Project files:"
+          ls -la
+
+          echo ""
+          echo "Gradle files:"
+          find . -maxdepth 4 -type f \( \
+            -name "build.gradle" -o \
+            -name "build.gradle.kts" -o \
+            -name "settings.gradle" -o \
+            -name "settings.gradle.kts" -o \
+            -name "gradlew" \
+          \) -print
+
+      - name: Prepare Gradle Wrapper
+        shell: bash
+        run: |
+          cd "$PROJECT_DIR"
+
+          if [ -f "./gradlew" ]; then
+            chmod +x ./gradlew
+            echo "Gradle wrapper found."
+          else
+            echo "Gradle wrapper not found."
+            echo "Using installed Gradle instead."
+          fi
+
+      - name: Build Debug APK
+        shell: bash
+        run: |
+          cd "$PROJECT_DIR"
+
+          if [ -f "./gradlew" ]; then
+            chmod +x ./gradlew
+            ./gradlew assembleDebug --stacktrace
+          else
+            gradle assembleDebug --stacktrace
+          fi
+
+      - name: Find Generated APK
+        shell: bash
+        run: |
+          echo "Searching for generated APK..."
+
+          find "$PROJECT_DIR" -type f -name "*.apk" -print
+
+      - name: Upload CHORIFY 2 APK
         uses: actions/upload-artifact@v4
         with:
           name: CHORIFY-2-debug-APK
-          path: "**/build/outputs/apk/debug/*.apk"
+          path: |
+            **/build/outputs/apk/debug/*.apk
           if-no-files-found: error
