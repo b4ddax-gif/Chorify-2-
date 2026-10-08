@@ -1,0 +1,59 @@
+name: Build CHORIFY 2 APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    name: Build CHORIFY 2
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Make Gradle executable
+        run: |
+          if [ -f "./gradlew" ]; then
+            chmod +x ./gradlew
+          fi
+
+      - name: Verify project
+        run: |
+          echo "Project files:"
+          ls -la
+          echo "Gradle files:"
+          find . -maxdepth 3 -type f \( -name "settings.gradle" -o -name "settings.gradle.kts" -o -name "build.gradle" -o -name "build.gradle.kts" -o -name "gradlew" \) -print
+
+      - name: Build Debug APK
+        run: |
+          if [ -f "./gradlew" ]; then
+            ./gradlew assembleDebug --stacktrace
+          else
+            echo "ERROR: gradlew not found in repository root."
+            echo "Upload the complete Android Studio project including gradlew."
+            exit 1
+          fi
+
+      - name: Find APK
+        run: |
+          echo "Generated APK files:"
+          find . -type f -name "*.apk" -print
+
+      - name: Upload CHORIFY 2 APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: CHORIFY-2-debug-APK
+          path: |
+            **/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
