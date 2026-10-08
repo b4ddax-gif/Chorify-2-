@@ -25,41 +25,57 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
+      - name: Check ZIP
+        run: |
+          echo "Files in repository:"
+          ls -lah
+
+          if [ ! -f "chorify-2.zip" ]; then
+            echo "ERROR: chorify-2.zip not found!"
+            exit 1
+          fi
+
+          echo "ZIP found:"
+          ls -lh chorify-2.zip
+
+      - name: Extract CHORIFY 2
+        run: |
+          mkdir -p chorify_project
+
+          unzip -q "chorify-2.zip" -d chorify_project
+
+          echo "Extracted project:"
+          find chorify_project -maxdepth 5 -type f | sort | head -300
+
       - name: Locate Android Project
         shell: bash
         run: |
-          echo "Searching for Android Gradle project..."
+          echo "Searching extracted project..."
 
-          echo ""
-          echo "Repository structure:"
-          find . -maxdepth 5 -type f | sort | head -300
-
-          echo ""
-          echo "Searching for settings.gradle files..."
-
-          SETTINGS_FILE=$(find . -type f \( \
+          SETTINGS_FILE=$(find chorify_project -type f \( \
             -name "settings.gradle" -o \
             -name "settings.gradle.kts" \
           \) | head -n 1)
 
           if [ -z "$SETTINGS_FILE" ]; then
             echo ""
-            echo "ERROR: settings.gradle or settings.gradle.kts was not found."
+            echo "ERROR: Android Gradle project was not found inside chorify-2.zip."
             echo ""
-            echo "This repository does not contain a complete Android Gradle project."
+            echo "The ZIP must contain settings.gradle or settings.gradle.kts."
+            echo ""
+            echo "ZIP CONTENT:"
+            find chorify_project -maxdepth 6 -type f | sort
             exit 1
           fi
 
           PROJECT_DIR=$(dirname "$SETTINGS_FILE")
 
-          echo ""
           echo "Android project found:"
           echo "$PROJECT_DIR"
 
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
 
-      - name: Check Gradle Project
-        shell: bash
+      - name: Check Android Project
         run: |
           cd "$PROJECT_DIR"
 
@@ -68,11 +84,11 @@ jobs:
 
           echo ""
           echo "Project files:"
-          ls -la
+          ls -lah
 
           echo ""
           echo "Gradle files:"
-          find . -maxdepth 4 -type f \( \
+          find . -maxdepth 5 -type f \( \
             -name "build.gradle" -o \
             -name "build.gradle.kts" -o \
             -name "settings.gradle" -o \
@@ -81,7 +97,6 @@ jobs:
           \) -print
 
       - name: Prepare Gradle Wrapper
-        shell: bash
         run: |
           cd "$PROJECT_DIR"
 
@@ -90,11 +105,10 @@ jobs:
             echo "Gradle wrapper found."
           else
             echo "Gradle wrapper not found."
-            echo "Using installed Gradle instead."
+            echo "Using installed Gradle."
           fi
 
       - name: Build Debug APK
-        shell: bash
         run: |
           cd "$PROJECT_DIR"
 
@@ -105,17 +119,19 @@ jobs:
             gradle assembleDebug --stacktrace
           fi
 
-      - name: Find Generated APK
-        shell: bash
+      - name: Find APK
         run: |
-          echo "Searching for generated APK..."
+          echo "Searching for APK..."
 
-          find "$PROJECT_DIR" -type f -name "*.apk" -print
+          find "$PROJECT_DIR" \
+            -type f \
+            -name "*.apk" \
+            -print
 
       - name: Upload CHORIFY 2 APK
         uses: actions/upload-artifact@v4
         with:
           name: CHORIFY-2-debug-APK
           path: |
-            **/build/outputs/apk/debug/*.apk
+            chorify_project/**/build/outputs/apk/debug/*.apk
           if-no-files-found: error
