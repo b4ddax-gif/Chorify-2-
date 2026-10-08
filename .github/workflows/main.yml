@@ -13,37 +13,47 @@ jobs:
 
     steps:
 
+      # 1. Checkout
       - name: Checkout Repository
         uses: actions/checkout@v4
 
+      # 2. Java 21
       - name: Setup JDK 21
         uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '21'
 
+      # 3. Gradle
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Check ZIP
+      # 4. Check ZIP
+      - name: Check CHORIFY 2 ZIP
         run: |
           if [ ! -f "chorify-2.zip" ]; then
             echo "ERROR: chorify-2.zip not found!"
+            echo "Files in repository:"
+            find . -maxdepth 2 -type f | sort
             exit 1
           fi
 
-          echo "ZIP found:"
+          echo "CHORIFY 2 ZIP found:"
           ls -lh chorify-2.zip
 
+      # 5. Extract project
       - name: Extract CHORIFY 2
+        shell: bash
         run: |
           rm -rf chorify_project
           mkdir -p chorify_project
+
           unzip -q "chorify-2.zip" -d chorify_project
 
-          echo "Extracted files:"
+          echo "Extracted project:"
           find chorify_project -maxdepth 5 -type f | sort | head -300
 
+      # 6. Find Android project
       - name: Locate Android Project
         shell: bash
         run: |
@@ -53,20 +63,47 @@ jobs:
           \) | head -n 1)
 
           if [ -z "$SETTINGS_FILE" ]; then
-            echo "ERROR: Android Gradle project not found."
+            echo "ERROR: settings.gradle or settings.gradle.kts not found."
+            echo "The ZIP does not contain a valid Android Gradle project."
             exit 1
           fi
 
           PROJECT_DIR=$(dirname "$SETTINGS_FILE")
 
-          echo "Android project:"
+          echo "Android project found at:"
           echo "$PROJECT_DIR"
 
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
 
+      # 7. Check Gradle files
+      - name: Check Gradle Project
+        shell: bash
+        run: |
+          cd "$PROJECT_DIR"
+
+          echo "Project directory:"
+          pwd
+
+          echo ""
+          echo "Project files:"
+          ls -la
+
+          echo ""
+          echo "Gradle files:"
+          find . -maxdepth 3 -type f \( \
+            -name "build.gradle" -o \
+            -name "build.gradle.kts" -o \
+            -name "settings.gradle" -o \
+            -name "settings.gradle.kts" \
+          \) -print
+
+      # 8. Create debug keystore
       - name: Create Debug Keystore
+        shell: bash
         run: |
           mkdir -p "$HOME/.android"
+
+          rm -f "$HOME/.android/debug.keystore"
 
           keytool -genkeypair \
             -v \
@@ -79,37 +116,26 @@ jobs:
             -validity 10000 \
             -dname "CN=Android Debug,O=Android,C=US"
 
-          echo "Debug keystore created."
+          echo "Debug keystore created successfully."
 
-      - name: Remove Custom Signing Configuration
+      # 9. Build CHORIFY 2
+      - name: Build CHORIFY 2 Debug APK
         shell: bash
         run: |
           cd "$PROJECT_DIR"
 
-          echo "Checking Gradle files..."
-
-          find . -type f \( \
-            -name "build.gradle" -o \
-            -name "build.gradle.kts" \
-          \) -print
-
-          echo ""
-          echo "If the project uses a custom release/debug keystore,"
-          echo "the Android build will use the generated debug keystore."
-
-      - name: Build Debug APK
-        shell: bash
-        run: |
-          cd "$PROJECT_DIR"
+          echo "Building CHORIFY 2..."
 
           if [ -f "./gradlew" ]; then
             chmod +x ./gradlew
+
             ./gradlew assembleDebug \
               -Pandroid.injected.signing.store.file="$HOME/.android/debug.keystore" \
               -Pandroid.injected.signing.store.password=android \
               -Pandroid.injected.signing.key.alias=androiddebugkey \
               -Pandroid.injected.signing.key.password=android \
               --stacktrace
+
           else
             gradle assembleDebug \
               -Pandroid.injected.signing.store.file="$HOME/.android/debug.keystore" \
@@ -119,11 +145,18 @@ jobs:
               --stacktrace
           fi
 
-      - name: Find APK
+      # 10. Find APK
+      - name: Find Generated APK
+        shell: bash
         run: |
-          echo "Generated APK files:"
-          find "$PROJECT_DIR" -type f -name "*.apk" -print
+          echo "Searching for APK..."
 
+          find "$PROJECT_DIR" \
+            -type f \
+            -name "*.apk" \
+            -print
+
+      # 11. Upload APK
       - name: Upload CHORIFY 2 APK
         uses: actions/upload-artifact@v4
         with:
