@@ -8,11 +8,10 @@ on:
 
 jobs:
   build:
-    name: Build CHORIFY 2
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout source code
+      - name: Checkout
         uses: actions/checkout@v4
 
       - name: Set up JDK 21
@@ -21,57 +20,33 @@ jobs:
           distribution: temurin
           java-version: '21'
 
-      - name: Check project files
-        run: |
-          echo "Current directory:"
-          pwd
-          echo ""
-          echo "Project files:"
-          ls -la
-          echo ""
-          echo "Searching for Gradle files:"
-          find . -maxdepth 4 -type f \( \
-            -name "gradlew" -o \
-            -name "settings.gradle" -o \
-            -name "settings.gradle.kts" -o \
-            -name "build.gradle" -o \
-            -name "build.gradle.kts" \
-          \) -print
+      - name: Install Gradle
+        uses: gradle/actions/setup-gradle@v4
 
-      - name: Find Gradle wrapper
+      - name: Check project
         run: |
-          GRADLEW=$(find . -type f -name "gradlew" | head -n 1)
+          echo "Files:"
+          find . -maxdepth 3 -type f | sort
 
-          if [ -z "$GRADLEW" ]; then
-            echo "ERROR: gradlew not found!"
-            echo "The complete Android project must contain the Gradle wrapper."
+      - name: Build APK
+        run: |
+          if [ -f "build.gradle" ] || [ -f "build.gradle.kts" ]; then
+            gradle assembleDebug --stacktrace
+          elif [ -f "app/build.gradle" ] || [ -f "app/build.gradle.kts" ]; then
+            gradle -p . assembleDebug --stacktrace
+          else
+            echo "ERROR: Android Gradle project not found."
+            echo "build.gradle/build.gradle.kts is missing."
             exit 1
           fi
 
-          echo "Found Gradle wrapper:"
-          echo "$GRADLEW"
-
-          chmod +x "$GRADLEW"
-
-      - name: Build Debug APK
-        run: |
-          GRADLEW=$(find . -type f -name "gradlew" | head -n 1)
-          PROJECT_DIR=$(dirname "$GRADLEW")
-
-          echo "Using project directory: $PROJECT_DIR"
-
-          cd "$PROJECT_DIR"
-          ./gradlew assembleDebug --stacktrace
-
       - name: Find APK
         run: |
-          echo "Generated APK files:"
           find . -type f -name "*.apk" -print
 
-      - name: Upload CHORIFY 2 APK
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: CHORIFY-2-debug-APK
-          path: |
-            **/build/outputs/apk/debug/*.apk
+          path: "**/build/outputs/apk/debug/*.apk"
           if-no-files-found: error
